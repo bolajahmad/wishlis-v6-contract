@@ -29,13 +29,11 @@
 #[ink::contract]
 mod wishlist {
     use ink::{
-        storage::{Mapping, StorageVec},
+        storage::{StorageVec},
         H160, U256,
     };
 
     use ink::prelude::{string::String, vec::Vec};
-
-    use crate::wishlist;
 
     #[ink(event)]
     pub struct WishlistAdded {
@@ -79,7 +77,8 @@ mod wishlist {
     /// to add new static storage fields to your contract.
     #[ink(storage)]
     pub struct Wishlist {
-        /// Stores a single `bool` value on the storage.
+        /// Stores the id of the next wishlist item.
+        /// The current length will be (next_item_id - 1)
         next_item_id: u32,
         // items_by_id: Mapping<H160, Vec<WishListItem>>,
         items: StorageVec<Option<WishListItem>>,
@@ -160,7 +159,7 @@ mod wishlist {
             let wishlist = self.items.get(id);
             match wishlist {
                 None => Err(Error::WishNotFound),
-                Some(mut item) => {
+                Some(item) => {
                     let mut item = item.unwrap();
                     if caller == item.owner {
                         // If owner is funding, update the raised amount
@@ -222,7 +221,7 @@ mod wishlist {
 
                     for (address, bal) in contributors {
                         let percentage = (bal * U256::from(100)) / total_worth;
-                        self.env().transfer(address, percentage);
+                        let _ = self.env().transfer(address, percentage);
                     }
 
                     Ok(())
@@ -241,12 +240,9 @@ mod wishlist {
                 Some(item) => {
                     let item = item.unwrap();
                     if item.owner != caller {
-                        println!("Caller is not the owner of this wish");
                         return Err(Error::WishNotFound);
                     } else {
                         let time = self.env().block_timestamp();
-                        println!("Current time: {}", time);
-                        println!("End date: {}", item.end_date);
                         assert!(time >= item.end_date, "Cannot claim wish before end date");
                         assert!(item.owner == caller, "Only owner can claim wish");
 
@@ -261,20 +257,17 @@ mod wishlist {
                                 .transfer(item.owner, item.raised + contributors_worth);
                             match result {
                                 Ok(_) => {
-                                    println!("Transfer successful");
                                     self.items.set(
                                         id,
                                         &None::<WishListItem>,
                                     );
                                 },
                                 Err(_) => {
-                                    println!("Transfer failed");
                                     return Err(Error::InvalidContribution);
                                 }
                             }
                             self.items.set(id, &None::<WishListItem>);
                         } else {
-                            println!("Raised amount is less than target, cannot claim wish");
                             return Err(Error::InvalidContribution);
                         }
 
@@ -400,7 +393,7 @@ mod wishlist {
             assert!(result.is_err(), "Funding will not succeed");
             assert_eq!(result.err(), Some(Error::InvalidContribution));
 
-            /// ID must exist
+            // ID must exist
             set_value_transferred(U256::from(10));
             let result = wishlist.fund_wish(1);
             assert!(result.is_err(), "ID must exist");
